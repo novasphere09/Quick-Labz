@@ -1,0 +1,465 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id           String          @id @default(cuid())
+  name         String
+  email        String?         @unique
+  emailVerified DateTime?
+  phone        String?         @unique
+  image        String?
+  role         String          @default("PATIENT") // PATIENT, ADMIN, LAB_PARTNER, COLLECTOR
+  passwordHash String?
+  failedLoginAttempts Int @default(0)
+  lockedUntil         DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+
+  patientProfiles PatientProfile[]
+  addresses       Address[]
+  bookings        Booking[]
+  laboratory      Laboratory?
+  collector       Collector?
+  referralPartner ReferralPartner?
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?
+  access_token      String?
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model LabReview {
+  id          String     @id @default(cuid())
+  labId       String
+  patientName String
+  rating      Int        // 1 to 5
+  comment     String?
+  createdAt   DateTime   @default(now())
+  
+  laboratory  Laboratory @relation(fields: [labId], references: [id], onDelete: Cascade)
+
+  @@index([labId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  id         String   @id @default(cuid())
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  attempts   Int      @default(0)
+
+  @@unique([identifier, token])
+}
+
+model PatientProfile {
+  id               String   @id @default(cuid())
+  userId           String
+  fullName         String
+  age              Int
+  gender           String   // Male, Female, Other
+  bloodGroup       String?
+  emergencyContact String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Address {
+  id        String   @id @default(cuid())
+  userId    String
+  house     String
+  street    String
+  area      String
+  city      String
+  state     String   @default("Delhi NCR")
+  pincode   String
+  landmark  String?
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model TestCategory {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  icon        String?  // Icon name from Lucide
+  description String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  tests Test[]
+}
+
+model Test {
+  id                   String   @id @default(cuid())
+  name                 String
+  slug                 String   @unique
+  categoryId           String
+  labPrice             Float    // Partner lab base price (Internal only)
+  sellingPrice         Float    // QuickLabz customer price
+  sampleType           String   @default("Blood") // Blood, Urine, Serum, Plasma
+  fastingRequired      Boolean  @default(false)
+  fastingDurationHours Int      @default(0) // e.g. 10-12 hrs
+  preparationNotes     String?
+  turnaroundHours      Int      @default(24) // e.g. 12, 24, 48 hrs
+  description          String
+  popular              Boolean  @default(false)
+  active               Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  category     TestCategory   @relation(fields: [categoryId], references: [id])
+  labTests     LabTest[]
+  packageTests PackageTest[]
+  bookingItems BookingItem[]
+
+  @@index([categoryId])
+  @@index([slug])
+  @@index([active])
+}
+
+model Laboratory {
+  id             String   @id @default(cuid())
+  name           String
+  slug           String   @unique
+  area           String
+  city           String
+  pincode        String
+  distanceKm     Float    @default(2.5)
+  turnaroundText String   @default("Same Day / 24 Hours")
+  partnerStatus  String   @default("Verified Partner") // Verified Partner, Premium Lab
+  approvalStatus String   @default("PENDING") // PENDING, APPROVED, REJECTED, TERMINATED
+  documentUrl    String?  // Govt verified document URL
+  frontImageUrl  String?  // Lab facility front photo URL
+  insideImageUrl String?  // Lab reception/inside photo URL
+  equipmentImageUrl String? // Lab equipment photo URL
+  rating         Float    @default(4.8)
+  phone          String
+  email          String
+  address        String
+  active         Boolean  @default(true)
+  lat            Float?
+  lng            Float?
+  upiId          String?
+  userId         String?  @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user     User?     @relation(fields: [userId], references: [id])
+  labTests LabTest[]
+  labPackages LabPackage[]
+  customPackages HealthPackage[]
+  bookings Booking[]
+  reviews  LabReview[]
+
+  @@index([userId])
+  @@index([slug])
+  @@index([city])
+  @@index([area])
+  @@index([active])
+  @@index([approvalStatus])
+}
+
+model LabTest {
+  id             String   @id @default(cuid())
+  labId          String
+  testId         String
+  customLabPrice Float?
+  calculatedSellingPrice Float?
+  available      Boolean  @default(true)
+
+  laboratory Laboratory @relation(fields: [labId], references: [id], onDelete: Cascade)
+  test       Test       @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@unique([labId, testId])
+  @@index([labId])
+  @@index([testId])
+}
+
+model LabPackage {
+  id                     String        @id @default(cuid())
+  labId                  String
+  packageId              String
+  customLabPrice         Float?
+  calculatedSellingPrice Float?
+  available              Boolean       @default(true)
+
+  laboratory             Laboratory    @relation(fields: [labId], references: [id], onDelete: Cascade)
+  package                HealthPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@unique([labId, packageId])
+  @@index([labId])
+  @@index([packageId])
+}
+
+model HealthPackage {
+  id                    String   @id @default(cuid())
+  name                  String
+  slug                  String   @unique
+  labPrice              Float    // Base cost
+  sellingPrice          Float    // Selling price
+  description           String
+  popular               Boolean  @default(false)
+  active                Boolean  @default(true)
+  includedTestsSummary  String   // e.g. "CBC, ESR, FBS, LFT, RFT, Lipid, TFT, Vit D3, Vit B12, HbA1C"
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  laboratoryId          String?
+  laboratory            Laboratory?  @relation(fields: [laboratoryId], references: [id])
+
+  packageTests PackageTest[]
+  labPackages  LabPackage[]
+  bookingItems BookingItem[]
+
+  @@index([slug])
+  @@index([active])
+  @@index([laboratoryId])
+}
+
+model PackageTest {
+  id        String @id @default(cuid())
+  packageId String
+  testId    String
+
+  package HealthPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  test    Test          @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@unique([packageId, testId])
+  @@index([packageId])
+  @@index([testId])
+}
+
+model Booking {
+  id                String   @id @default(cuid())
+  bookingNumber     String   @unique // QLZ-2026-00001
+  userId            String?
+  patientName       String
+  patientAge        Int
+  patientGender     String
+  patientPhone      String
+  patientEmail      String?
+  house             String
+  street            String
+  area              String
+  city              String
+  state             String   @default("Delhi NCR")
+  pincode           String
+  landmark          String?
+  
+  labId             String
+  collectorId       String?
+  scheduledDate     String   // YYYY-MM-DD
+  timeSlot          String   // e.g. "07:00 AM - 08:00 AM"
+  fastingWindow     String?  // e.g. "Fasting 10-12 hours required before collection"
+  
+  totalAmount       Float    // Customer paid
+  labBaseAmount     Float    // Lab payable amount
+  grossMargin       Float    // Margin
+  deliveryFee       Float    @default(0)
+  gstAmount         Float    @default(0)
+  collectorPayoutAmount Float @default(0)
+  status            String   @default("BOOKING_RECEIVED") 
+  // BOOKING_RECEIVED, LAB_CONFIRMED, COLLECTOR_ASSIGNED, COLLECTION_SCHEDULED, SAMPLE_COLLECTED, SAMPLE_RECEIVED_AT_LAB, TESTING_IN_PROGRESS, REPORT_READY, REPORT_DELIVERED, CANCELLED
+  paymentStatus     String   @default("PENDING") // PENDING, PAID, CASH_ON_COLLECTION
+  labPayoutStatus   String   @default("PENDING") // PENDING, PAID
+  collectorPayoutStatus String @default("PENDING") // PENDING, PAID
+  lat               Float?
+  lng               Float?
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  
+  referralCode      String?
+  referralPartnerId String?
+  referralEarned    Float    @default(0)
+  
+  consentAgreed     Boolean  @default(true)
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user            User?            @relation(fields: [userId], references: [id])
+  laboratory      Laboratory       @relation(fields: [labId], references: [id])
+  collector       Collector?       @relation(fields: [collectorId], references: [id])
+  referralPartner ReferralPartner? @relation(fields: [referralPartnerId], references: [id])
+  bookingItems    BookingItem[]
+  reports         Report[]
+  referralTxns    ReferralTransaction[]
+
+  @@index([userId])
+  @@index([labId])
+  @@index([collectorId])
+  @@index([referralPartnerId])
+}
+
+model BookingItem {
+  id        String  @id @default(cuid())
+  bookingId String
+  testId    String?
+  packageId String?
+  itemType  String  @default("TEST") // TEST, PACKAGE
+  itemName  String
+  price     Float
+
+  booking Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  test    Test?          @relation(fields: [testId], references: [id])
+  package HealthPackage? @relation(fields: [packageId], references: [id])
+
+  @@index([bookingId])
+  @@index([testId])
+  @@index([packageId])
+}
+
+model Collector {
+  id               String   @id @default(cuid())
+  name             String
+  phone            String   @unique
+  email            String?  @unique
+  area             String
+  city             String
+  active           Boolean  @default(false)
+  approvalStatus   String   @default("PENDING") // PENDING, APPROVED, REJECTED, TERMINATED
+  dlUrl            String?  // Driving License
+  aadhaarUrl       String?  // Aadhaar Card
+  panUrl           String?  // PAN Card
+  certificationUrl String?  // Phlebotomy Certification
+  lat              Float?
+  lng              Float?
+  userId           String?  @unique
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user     User?     @relation(fields: [userId], references: [id])
+  bookings Booking[]
+
+  @@index([userId])
+}
+
+model Report {
+  id             String   @id @default(cuid())
+  bookingId      String
+  testName       String
+  fileUrl        String?
+  findingsJson   String?  // JSON array of test parameter values, normal ranges, units, flag
+  summary        String?
+  isNormal       Boolean  @default(true)
+  doctorName     String?  @default("Pathologist Sign-off")
+  labName        String?
+  uploadedAt     DateTime @default(now())
+  isDelivered    Boolean  @default(false)
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+}
+
+model ReferralPartner {
+  id              String   @id @default(cuid())
+  name            String
+  type            String   @default("CLINIC") // CLINIC, DOCTOR, PHARMACY, OTHER
+  code            String   @unique
+  phone           String
+  email           String?
+  active          Boolean  @default(true)
+  commissionRate  Float    @default(5) // 5%
+  totalEarnings   Float    @default(0)
+  paidEarnings    Float    @default(0)
+  pendingEarnings Float    @default(0)
+  userId          String?  @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user         User?     @relation(fields: [userId], references: [id])
+  bookings     Booking[]
+  transactions ReferralTransaction[]
+  
+  @@index([userId])
+}
+
+model ReferralTransaction {
+  id        String   @id @default(cuid())
+  partnerId String
+  bookingId String
+  amount    Float
+  status    String   @default("PENDING") // PENDING, APPROVED, PAID
+  createdAt DateTime @default(now())
+
+  partner ReferralPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  booking Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId])
+  @@index([bookingId])
+}
+
+model ServiceArea {
+  id        String  @id @default(cuid())
+  city      String
+  pincode   String  @unique
+  areaName  String
+  isServed  Boolean @default(true)
+}
+
+model PlatformSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}
+
+model SupportTicket {
+  id          String   @id @default(cuid())
+  name        String
+  phone       String
+  email       String?
+  subject     String
+  message     String
+  documentId  String?
+  status      String   @default("OPEN")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+

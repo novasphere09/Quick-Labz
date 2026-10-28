@@ -1,0 +1,69 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model TestCategory {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  icon        String?  // Icon name from Lucide
+  description String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  tests Test[]
+}
+
+model Test {
+  id                   String   @id @default(cuid())
+  name                 String
+  slug                 String   @unique
+  categoryId           String
+  labPrice             Float    // Partner lab base price (Internal only)
+  sellingPrice         Float    // QuickLabz customer price
+  sampleType           String   @default("Blood") // Blood, Urine, Serum, Plasma
+  fastingRequired      Boolean  @default(false)
+  fastingDurationHours Int      @default(0) // e.g. 10-12 hrs
+  preparationNotes     String?
+  turnaroundHours      Int      @default(24) // e.g. 12, 24, 48 hrs
+  description          String
+  popular              Boolean  @default(false)
+  active               Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  category     TestCategory   @relation(fields: [categoryId], references: [id])
+  packageTests PackageTest[]
+}
+
+model HealthPackage {
+  id                    String   @id @default(cuid())
+  name                  String
+  slug                  String   @unique
+  labPrice              Float    // Base cost
+  sellingPrice          Float    // Selling price
+  description           String
+  popular               Boolean  @default(false)
+  active                Boolean  @default(true)
+  includedTestsSummary  String   // e.g. "CBC, ESR, FBS, LFT, RFT, Lipid, TFT, Vit D3, Vit B12, HbA1C"
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  packageTests PackageTest[]
+}
+
+model PackageTest {
+  id        String @id @default(cuid())
+  packageId String
+  testId    String
+
+  package HealthPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  test    Test          @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@unique([packageId, testId])
+}
